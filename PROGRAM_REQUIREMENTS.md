@@ -17,6 +17,8 @@ Turn a pl2ann network back into a readable Prolog program with variables, and pr
 | R7 | Prove the lifted program equals the network (clause by clause, typed grounding) | done |
 | R8 | Never lose exactness: groups that cannot be lifted stay ground | done |
 | R9 | Test on all 176 non-error networks of the pl2ann 200-pair set | done (`run_tests.sh`) |
+| R10 | The printed program is correct as plain Prolog: type guards (`member/2`) where a variable's inferred type matters, bodies ordered to run left to right | done (`tests/standalone.pl`: 133 of 133 checkable programs have their source's least model; 43 with domain files or term depth skipped) |
+| R11 | 200 input/output pairs produced by running the code | done (`io_pairs/`) |
 
 ## Work remaining
 

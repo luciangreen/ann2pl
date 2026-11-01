@@ -76,7 +76,7 @@ need(S, \+ G, M0, M) :- !, pred_key(G, K), ( memberchk(K-V, S) -> M is max(M0, V
 need(S, G, M0, M) :- callable(G), \+ builtin(G), !, pred_key(G, K), ( memberchk(K-V, S) -> M is max(M0, V) ; M = M0 ).
 need(_, _, M, M).
 
-builtin(_ \= _). builtin(_ = _). builtin(neq(_, _)).
+builtin(_ \= _). builtin(_ = _). builtin(neq(_, _)). builtin(member(_, _)).
 builtin(G) :- arith(G).
 arith(_ is _). arith(between(_, _, _)). arith(_ =:= _). arith(_ < _). arith(_ > _). arith(_ >= _). arith(_ =< _). arith(_ =\= _).
 
@@ -108,6 +108,7 @@ prove_body([\+ G|Gs], DB) :- !, \+ memberchk(G, DB), prove_body(Gs, DB).
 prove_body([X \= Y|Gs], DB) :- !, X \== Y, prove_body(Gs, DB).
 prove_body([neq(X, Y)|Gs], DB) :- !, X \== Y, prove_body(Gs, DB).
 prove_body([X = Y|Gs], DB) :- !, X = Y, prove_body(Gs, DB).
+prove_body([member(X, L)|Gs], DB) :- !, member(X, L), prove_body(Gs, DB).
 % arithmetic: X is E needs E ground (X may be unbound); between/3 needs its bounds;
 % a comparison needs both sides ground
 prove_body([G|Gs], DB) :- arith(G), !, arith_ready(G), catch(G, E, arith_error(E)), prove_body(Gs, DB).
@@ -318,6 +319,7 @@ builtins_hold([], []).
 builtins_hold([X \= Y|Gs], R) :- !, X \== Y, builtins_hold(Gs, R).
 builtins_hold([neq(X, Y)|Gs], R) :- !, X \== Y, builtins_hold(Gs, R).
 builtins_hold([X = Y|Gs], R) :- !, X == Y, builtins_hold(Gs, R).
+builtins_hold([member(X, L)|Gs], R) :- !, ground(X), memberchk(X, L), builtins_hold(Gs, R).
 builtins_hold([G|Gs], R) :- arith(G), !, ground(G), catch(G, E, arith_error(E)), builtins_hold(Gs, R).
 builtins_hold([G|Gs], [G|R]) :- builtins_hold(Gs, R).
 

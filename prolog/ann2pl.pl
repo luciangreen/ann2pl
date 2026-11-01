@@ -39,7 +39,7 @@ ann2pl(NetFile, Program, report(NG, NL, NGr, Proof)) :-
     types(Atoms, Types),
     maplist([(H :- B), H-B]>>true, Gs0, Gs),
     group_by_shape(Gs, Groups), length(Groups, NG),
-    maplist(lift_group(Types), Groups, Lifted),
+    maplist(lift_group(Types-Atoms), Groups, Lifted),
     aggregate_all(count, member(lifted(_), Lifted), NL),
     aggregate_all(count, member(ground(_), Lifted), NGr),
     findall(C, ( member(L, Lifted), ( L = lifted(Cs) ; L = ground(Cs) ), member(C, Cs) ), Program),
@@ -68,21 +68,71 @@ group_by_shape(Gs, Groups) :-
 
 % ---------------------------------------------------------------- lifting one group
 lift_group(_, [C], ground([Cl])) :- !, to_clause(C, Cl).
-lift_group(Types, Group, Result) :-
+lift_group(Types-Atoms, Group, Result) :-
     Group = [First|Rest],
     sort_body(First, F1),
     foldl(lgg_clause, Rest, F1, Gen),
     (   Gen = (GH-GB), term_variables(GH-GB, Vars), Vars \== [],
         typed_vars(GH-GB, Types, VT),
         grounding_equals(GH-GB, VT, [], Group)
-    ->  to_clause(GH-GB, Cl), Result = lifted([Cl])
+    ->  guard(Types, Atoms, Group, GH-GB, Gd), to_clause(Gd, Cl), Result = lifted([Cl])
     ;   Gen = (GH-GB), typed_vars(GH-GB, Types, VT),
         candidate_constraints(GH-GB, Group, Cands),
         grounding_equals(GH-GB, VT, Cands, Group),
         minimise(Cands, GH-GB, VT, Group, Needed)
-    ->  executable(GH, GB, Needed, Body), to_clause(GH-Body, Cl), Result = lifted([Cl])
+    ->  executable(GH, GB, Needed, Body), guard(Types, Atoms, Group, GH-Body, Gd), to_clause(Gd, Cl), Result = lifted([Cl])
     ;   maplist(to_clause, Group, Cls), Result = ground(Cls)
     ).
+
+% ---------------------------------------------------------------- type guards
+% The lifted clause equals the group when each variable ranges over its inferred type. Run
+% as plain Prolog, a variable ranges over every value instead, so a clause such as
+% div4(A) :- num(A) (correct only for A in {4,8,12,16,20}) or the fact bird(A) would say
+% more than the network. guard/5 finds the ground instances that plain Prolog would add
+% (body atoms taken from the network's atoms, other variables from every constant) and,
+% if there are any, adds member(V, Values) guards for the fewest variables that remove
+% them. The guards hold for every typed value, so the proof is unchanged, and the printed
+% program is correct on its own.
+guard(Types, Atoms, Group, H-B, H-B1) :-
+    findall(V, ( member(_-_-Vs, Types), member(V, Vs) ), C0), sort(C0, Consts),
+    typed_vars(H-B, Types, VT),
+    maplist(canon, Group, G0), sort(G0, GroupS),
+    partition([G]>>( G \= (\+ _), \+ builtin(G) ), B, Pos, Others),
+    % a variable that no positive literal binds ranges over every term in plain Prolog
+    % (bird(A) says everything is a bird), so it is always guarded
+    term_variables(Pos, PV), term_variables(H-B, All),
+    exclude({PV}/[V]>>( member(W, PV), W == V ), All, Forced0),
+    include({VT}/[V]>>( member(W-Vals, VT), W == V, Vals \== [] ), Forced0, Forced),
+    length(PV, NP),
+    (   between(0, NP, K), length(Gv0, K), subseq(Gv0, PV), append(Forced, Gv0, Gv),
+        % (no findall here: it would copy the variables and cut them off from the clause)
+        maplist({VT}/[V, V-Vals]>>( member(W-Vals, VT), W == V, ! ), Gv, Guards),
+        \+ plain_extra(H-B, Guards, Consts, Atoms, GroupS)
+    ->  maplist([V-Vals, member(V, Vals)]>>true, Guards, Gs)
+    ;   Gs = []
+    ),
+    % a guard on a variable that X is E binds goes right after that goal (as a test); the
+    % others go after the positive literals, before negations and constraints that use them
+    partition({Others}/[member(V, _)]>>( member(O, Others), O = (X is _), X == V ), Gs, AfterIs, Early),
+    foldl(place_after_is, AfterIs, Others, Others1),
+    append([Pos, Early, Others1], B1).
+place_after_is(member(V, Vals), L0, L) :-
+    append(Pre, [O|Post], L0), O = (X is _), X == V, !, append(Pre, [O, member(V, Vals)|Post], L).
+subseq([], _).
+subseq([X|Xs], [X|Ys]) :- subseq(Xs, Ys).
+subseq(Xs, [_|Ys]) :- subseq(Xs, Ys).
+
+% a ground instance plain Prolog allows that is not one of the group's clauses
+plain_extra(H-B, Guards, Consts, Atoms, GroupS) :-
+    copy_term(H-B-Guards, H1-B1-G1),
+    partition([G]>>( G \= (\+ _), \+ builtin(G) ), B1, Pos, Others),
+    maplist({Atoms}/[L]>>member(L, Atoms), Pos),
+    maplist([V-Vals]>>( var(V) -> member(V, Vals) ; memberchk(V, Vals) ), G1),
+    term_variables(H1-Others, Free), maplist({Consts}/[V]>>member(V, Consts), Free),
+    forall(( member(G, Others), builtin(G) ), holds(G)),
+    exclude(builtin, B1, Lits), msort(Lits, BS),
+    \+ ord_memberchk(H1-BS, GroupS).
+builtin(G) :- prover:builtin(G).
 
 to_clause(H-[], H) :- !.
 to_clause(H-B, (H :- C)) :- list_conj(B, C).

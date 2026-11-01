@@ -15,3 +15,5 @@ for d in "$here"/fixtures/*/; do
       --out "$NETS_DIR/$id/net.pl" --module "net_$id" >/dev/null 2>&1 )
 done
 cd "$here/tests" && swipl -q -g main -t 'halt(1)' run_all.pl
+# the printed programs must also be correct as plain Prolog, without the inferred types
+cd "$here/tests" && swipl -q -g main -t 'halt(1)' standalone.pl
