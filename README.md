@@ -15,6 +15,9 @@ ann2pl reads a [pl2ann](https://github.com/luciangreen/pl2ann) network back as a
 4. **Generalise.** Each group is generalised by anti-unification (Plotkin's least general generalisation). Bodies with repeated predicates are aligned by the permutation that keeps the most structure.
 5. **Constrain.** The general clause is grounded over the types and compared with the group. If it covers too much, candidate constraints that every instance satisfies are added: `X \= Y`, `X @< Y`, `X < Y`, `X =< Y`, `X =:= Y ± c`, `X =:= Y * c`, `X =:= Y * Y`, `X =:= Y mod c` and `X =:= Y // c`. Then constraints are removed one at a time while the grounding still matches. The surviving constraints are reordered so the clause runs left to right (`X =:= Y + 1` with Y bound becomes `X is Y + 1`).
 6. **Prove.** The lifted program is checked with `net_matches_program/4` against the same network, using the inferred types. A group that can't be lifted stays as ground clauses, so the output always equals the network exactly.
+7. **Guard.** The proof grounds each variable over its inferred type, but plain Prolog does not know those types. So each lifted clause is checked as plain Prolog: body atoms are taken from the network's atoms, and any other variable from every constant. If that gives an instance the network does not have, `member(V, Values)` guards are added for the fewest variables that remove it. A variable that no positive literal binds is always guarded, since in plain Prolog it ranges over every term. Bodies are ordered so that positive literals come first, then guards, then negations and constraints. A guard on a variable that `X is E` binds goes right after that goal. The guards hold for every typed value, so the proof covers the program exactly as printed. `tests/standalone.pl` checks that the printed program has the same least model as the source program, run as plain Prolog.
+
+   Without guards, network 110 printed `div4(A) :- num(A).`, which as plain Prolog says every number is divisible by 4; it now prints `div4(A) :- num(A), member(A, [0, 4, 8, 12, 16, 20]).` Network 083 printed the fact `bird(A).` and `flies(A) :- \+ abnormal(A), bird(A).`, which never succeeds in Prolog; they are now `bird(A) :- member(A, [opus, pingu, robin]).` and `flies(A) :- bird(A), \+ abnormal(A).` Before the change, 31 of the 133 checkable programs had a different least model from their source; now none do.
 
 ## Example
 
@@ -38,6 +41,10 @@ This builds all 176 fixtures (the non-error pairs of the pl2ann 200-pair set) wi
 ?- use_module(prolog/ann2pl).
 ?- ann2pl('build/043/net.pl', Program, Report), write_program(user_output, Program).
 ```
+
+## Input/output pairs
+
+[`io_pairs/io_pairs.md`](io_pairs/io_pairs.md) holds 200 input/output pairs: every fixture network read back as Prolog, plus 24 fixtures rebuilt as sigmoid networks. Each was produced by running the code (`io_pairs/generate.pl`).
 
 ## Limits
 
